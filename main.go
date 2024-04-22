@@ -7,6 +7,7 @@ import (
   "net/http"
   "errors"
   "encoding/json"
+  "github.com/Mukilan-Krishnakumar/pokedexcli/internal/pokecache"
 )
 
 type cliCommand struct{
@@ -139,6 +140,7 @@ func commandMapB(c *config) error{
 
 
 func main(){
+  pokecache.pokeprint()
   prompt := "pokedex > "
   getMap := getMap() 
   var actualconf config
