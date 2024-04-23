@@ -5,9 +5,11 @@ import (
   "os"
   "bufio"
   "net/http"
-  "errors"
+"errors"
   "encoding/json"
   "github.com/Mukilan-Krishnakumar/pokedexcli/internal/pokecache"
+  "time"
+  "io"
 )
 
 type cliCommand struct{
@@ -19,6 +21,7 @@ type cliCommand struct{
 type config struct{
   Next *string
   Previous *string
+  Cache pokecache.Cache
 }
 
 type pokeJSON struct{
@@ -80,14 +83,19 @@ func commandExit(c *config) error{
 func commandMap(c *config) error{
   if c.Previous == nil{
     init_url := "https://pokeapi.co/api/v2/location-area/"
-    res, err := http.Get(init_url)
-    if err != nil{
-        return errors.New("Problem hitting the API")
-      }
-    defer res.Body.Close()
-    decoder := json.NewDecoder(res.Body)
+    _, ok := c.Cache.Get(init_url)
+    if !ok{
+      res, err := http.Get(init_url)
+      if err != nil{
+          return errors.New("Problem hitting the API")
+        }
+      defer res.Body.Close()
+      body,_ := io.ReadAll(res.Body)
+      c.Cache.Add(init_url, body)
+    }
     var pokejsondata pokeJSON
-    decoder.Decode(&pokejsondata)
+    stream_obj, _ := c.Cache.Get(init_url)
+    json.Unmarshal(stream_obj, &pokejsondata)
     c.Previous = &init_url
     c.Next = pokejsondata.Next
     for _, location := range pokejsondata.Results{
@@ -100,14 +108,21 @@ func commandMap(c *config) error{
   if c.Next == nil{
     return nil
   }
-  res, err := http.Get(*c.Next)
-  if err != nil{
-    return errors.New("Problem hitting the API")
+  _, ok := c.Cache.Get(*c.Next)
+  if !ok{
+    res, err := http.Get(*c.Next)
+    if err != nil{
+      return errors.New("Problem hitting the API")
+    }
+    defer res.Body.Close()
+    body,_ := io.ReadAll(res.Body)
+    c.Cache.Add(*c.Next, body)
   }
-  defer res.Body.Close()
-  decoder := json.NewDecoder(res.Body)
+
   var pokejsondata pokeJSON
-  decoder.Decode(&pokejsondata)
+  stream_obj, _ := c.Cache.Get(*c.Next)
+  json.Unmarshal(stream_obj, &pokejsondata)
+
   c.Next = pokejsondata.Next
   c.Previous = pokejsondata.Previous
   for _, location := range pokejsondata.Results{
@@ -121,14 +136,19 @@ func commandMapB(c *config) error{
   if c.Previous == nil{
     return nil
   }
-  res, err := http.Get(*c.Previous)
-  if err != nil{
-    return errors.New("Problem hitting the API")
+  _, ok := c.Cache.Get(*c.Previous)
+  if !ok{
+    res, err := http.Get(*c.Previous)
+    if err != nil{
+      return errors.New("Problem hitting the API")
+    }
+    defer res.Body.Close()
+    body, _ := io.ReadAll(res.Body)
+    c.Cache.Add(*c.Previous, body)
   }
-  defer res.Body.Close()
-  decoder := json.NewDecoder(res.Body)
   var pokejsondata pokeJSON
-  decoder.Decode(&pokejsondata)
+  stream_obj, _ := c.Cache.Get(*c.Previous)
+  json.Unmarshal(stream_obj, &pokejsondata)
   c.Next = pokejsondata.Next
   c.Previous = pokejsondata.Previous
   for _, location := range pokejsondata.Results{
@@ -140,11 +160,12 @@ func commandMapB(c *config) error{
 
 
 func main(){
-  pokecache.pokeprint()
+  cache := pokecache.NewCache(15 * time.Second)
   prompt := "pokedex > "
   getMap := getMap() 
   var actualconf config
   config := &actualconf
+  config.Cache = cache
   fmt.Printf(prompt)
   scanner := bufio.NewScanner(os.Stdin)
   for scanner.Scan() {
